@@ -1,0 +1,139 @@
+﻿@model WebsiteFormAutoFiller.Models.FormInput
+@{
+    ViewData["Title"] = "Website Autofill";
+    Layout = null;
+}
+
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="utf-8" />
+    <title>Website Autofill</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css" rel="stylesheet">
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+    <style>
+        .stat-badge {
+            font-size: 1rem;
+            padding: 0.6rem 1.2rem;
+            margin-right: 1rem;
+            border-radius: 1rem;
+        }
+    </style>
+</head>
+<body>
+    <div class="container mt-5">
+        <h2 class="mb-4 animate__animated animate__fadeInDown">Bulk Website Form Autofiller</h2>
+
+        <!-- Stats Summary -->
+        <div class="mb-4">
+            <span class="badge bg-primary stat-badge">📊 Total: <span id="statTotal">0</span></span>
+            <span class="badge bg-success stat-badge">✅ Success: <span id="statSuccess">0</span></span>
+            <span class="badge bg-danger stat-badge">❌ Failed: <span id="statFailed">0</span></span>
+            <span class="badge bg-warning text-dark stat-badge">⚠️ Skipped: <span id="statSkipped">0</span></span>
+        </div>
+
+        <form id="autofillForm" enctype="multipart/form-data" class="animate__animated animate__fadeInUp">
+            <div class="mb-3">
+                <label>Enter fields details</label>
+                <div id="extraFieldsContainer"></div>
+                <button type="button" class="btn btn-sm btn-outline-primary mt-2" onclick="addExtraField()">➕ Add Field</button>
+            </div>
+
+            <div class="mb-3">
+                <label>Upload URL List (.txt)</label>
+                <input name="UrlFile" type="file" class="form-control" accept=".txt" required id="urlFileInput" />
+            </div>
+            <button type="submit" class="btn btn-primary">Start Automation</button>
+            <button type="button" class="btn btn-outline-success mt-3" onclick="window.open('/Home/DownloadReport', '_blank')">
+                ⬇️ Download CSV Report
+            </button>
+        </form>
+
+        <div class="mt-4 animate__animated animate__fadeIn">
+            <h4>Live Progress:</h4>
+            <div class="border rounded p-3 bg-light" style="height: 300px; overflow-y: auto;" id="progressBox">
+                <div><i>Waiting to start...</i></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let successCount = 0;
+        let failedCount = 0;
+        let skippedCount = 0;
+        let totalCount = 0;
+
+        $('#autofillForm').on('submit', function (e) {
+            e.preventDefault();
+            const formData = new FormData(this);
+            $('#progressBox').html('<div class="animate__animated animate__flash"><b>🟡 Starting automation...</b></div>');
+
+            const fileInput = document.getElementById("urlFileInput");
+            if (fileInput && fileInput.files.length > 0) {
+                const reader = new FileReader();
+                reader.onload = function (e) {
+                    const urls = e.target.result.split(/\r?\n/).filter(line => line.trim() !== "");
+                    totalCount = urls.length;
+                    $('#statTotal').text(totalCount);
+                };
+                reader.readAsText(fileInput.files[0]);
+            }
+
+            const evtSource = new EventSource('/Home/StreamProgress');
+            evtSource.onmessage = function (event) {
+                const msgText = event.data.toLowerCase();
+
+                if (msgText.includes('✅ success')) {
+                    successCount++;
+                } else if (msgText.includes('❌ failed')) {
+                    failedCount++;
+                } else if (msgText.includes('⚠️ skipped')) {
+                    skippedCount++;
+                }
+
+                $('#statSuccess').text(successCount);
+                $('#statFailed').text(failedCount);
+                $('#statSkipped').text(skippedCount);
+
+                const msg = $('<div class="animate__animated animate__fadeIn">').text(event.data);
+                $('#progressBox').append(msg);
+                $('#progressBox').scrollTop($('#progressBox')[0].scrollHeight);
+            };
+
+            $.ajax({
+                url: '/Home/UploadAndStart',
+                type: 'POST',
+                data: formData,
+                processData: false,
+                contentType: false
+            });
+        });
+
+        function addExtraField() {
+            const index = $('#extraFieldsContainer .row').length;
+            const fieldHtml = `
+                <div class="row mb-2 animate__animated animate__fadeIn">
+                    <div class="col-md-5">
+                        <input name="ExtraFields[${index}].Key" class="form-control" placeholder="Field Name (e.g. Value)" required />
+                    </div>
+                    <div class="col-md-5">
+                        <input name="ExtraFields[${index}].Value" class="form-control" placeholder="Field Value (e.g. Value)" required />
+                    </div>
+                    <div class="col-md-2">
+                        <button type="button" class="btn btn-danger" onclick="$(this).closest('.row').remove()">🗑</button>
+                    </div>
+                </div>`;
+            $('#extraFieldsContainer').append(fieldHtml);
+        }
+
+        // Add 3 default fields on load
+          $(document).ready(function () {
+            addExtraField("Name", "");
+            addExtraField("Email", "");
+            addExtraField("Phone", "");
+        });
+
+    </script>
+</body>
+</html>
